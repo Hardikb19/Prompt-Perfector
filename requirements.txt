@@ -1,0 +1,3 @@
+PySide6
+uuid
+# sqlite3 is part of Python stdlib, no need to install

@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.env
+.env
+*.egg-info/
+build/
+dist/
+ship/
+debug/
+.idea/
+.vscode/
+debug.log
+*.db
