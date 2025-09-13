@@ -1,0 +1,32 @@
+name: Sync lkg/master with master
+
+on:
+  schedule:
+    # Every 3 days at midnight UTC
+    - cron: '0 0 */3 * *'
+  workflow_dispatch:
+
+jobs:
+  merge-master-into-lkg:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout lkg/master
+        uses: actions/checkout@v4
+        with:
+          ref: lkg/master
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Git user
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+      - name: Fetch all branches
+        run: git fetch --all
+
+      - name: Merge master into lkg/master
+        run: git merge origin/master --no-ff --no-edit
+        continue-on-error: false
+
+      - name: Push changes
+        run: git push origin lkg/master
