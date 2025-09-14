@@ -11,5 +11,5 @@ ship/
 debug/
 .idea/
 .vscode/
-debug.log
 *.db
+*.log

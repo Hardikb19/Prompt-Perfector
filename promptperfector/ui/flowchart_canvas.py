@@ -42,6 +42,20 @@ class ArrowLineItem(QGraphicsLineItem):
 
 
 class FlowchartNode(QGraphicsRectItem):
+    def itemChange(self, change, value):
+        if change == QGraphicsItem.ItemPositionHasChanged:
+            # Update all connectors attached to this node
+            if self.canvas_ref:
+                for from_id, to_id, connector in getattr(self.canvas_ref, "connectors", []):
+                    if from_id == self.node_id or to_id == self.node_id:
+                        start_node = self.canvas_ref.nodes.get(from_id)
+                        end_node = self.canvas_ref.nodes.get(to_id)
+                        if start_node and end_node:
+                            connector.setLine(
+                                start_node.scenePos().x(), start_node.scenePos().y(),
+                                end_node.scenePos().x(), end_node.scenePos().y()
+                            )
+        return super().itemChange(change, value)
     def mousePressEvent(self, event):
         log_debug(f"[Node {getattr(self, 'node_id', None)}] mousePressEvent: button={event.button()}, modifiers={event.modifiers()}, pos={event.pos()}")
         super().mousePressEvent(event)
