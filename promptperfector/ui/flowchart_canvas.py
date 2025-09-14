@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsTextItem, QGraphicsRectItem, QGraphicsItem, QGraphicsLineItem, QMenu, QInputDialog, QGraphicsEllipseItem
+from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsTextItem, QGraphicsRectItem, QGraphicsItem, QGraphicsLineItem, QMenu, QInputDialog, QGraphicsEllipseItem, QDialog, QFormLayout, QLineEdit, QDialogButtonBox
 from PySide6.QtGui import QPen, QBrush, QColor, QFont, QMouseEvent, QPainter, QAction, QPolygonF
 from PySide6.QtCore import Qt, QPointF, QRectF
 from promptperfector.logic.logger import log_debug, log_info, log_error
@@ -42,6 +42,51 @@ class ArrowLineItem(QGraphicsLineItem):
 
 
 class FlowchartNode(QGraphicsRectItem):
+    def update_text_item(self):
+        log_debug(f'Showing subject/text in node update_text_item ${self.node_id}, ${self.subject}, ${self.text}')
+        display = self.subject.strip() if len(self.subject.strip()) > 0 else self.text
+        log_debug(f'Computed display text: "{display}"')
+        self.text_item.setPlainText(display)
+        log_debug(f'Set text item plain text to: "{self.text_item.toPlainText()}"')
+        self.update_text_box_size()
+
+    def get_text(self):
+        return self.text
+
+    def set_text(self, text):
+        self.text = text
+        self.update_text_item()
+        if self.canvas_ref and hasattr(self.canvas_ref, 'on_update') and text.strip():
+            log_info(f"Node text updated: id={self.node_id}, new_text='{text}'")
+            self.canvas_ref.on_update()
+
+    def get_subject(self):
+        return self.subject
+
+    def set_subject(self, subject):
+        self.subject = subject
+        self.update_text_item()
+        if self.canvas_ref and hasattr(self.canvas_ref, 'on_update'):
+            log_info(f"Node subject updated: id={self.node_id}, new_subject='{subject}'")
+            self.canvas_ref.on_update()
+
+    def edit_subject_and_text(self):
+        dialog = QDialog()
+        dialog.setWindowTitle("Edit Node")
+        layout = QFormLayout(dialog)
+        subject_edit = QLineEdit(dialog)
+        subject_edit.setText(self.get_subject())
+        text_edit = QLineEdit(dialog)
+        text_edit.setText(self.get_text())
+        layout.addRow("Subject (title):", subject_edit)
+        layout.addRow("Text (content):", text_edit)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dialog)
+        layout.addWidget(buttons)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        if dialog.exec() == QDialog.Accepted:
+            self.set_subject(subject_edit.text())
+            self.set_text(text_edit.text())
     def itemChange(self, change, value):
         if change == QGraphicsItem.ItemPositionHasChanged:
             # Update all connectors attached to this node
@@ -63,15 +108,13 @@ class FlowchartNode(QGraphicsRectItem):
     def contextMenuEvent(self, event):
         log_debug(f"[Node {getattr(self, 'node_id', None)}] contextMenuEvent at {event.pos()} (scene: {event.scenePos()})")
         menu = QMenu()
-        edit_action = QAction("Edit Text", menu)
+        edit_both_action = QAction("Edit Node (Subject/Text)", menu)
         delete_action = QAction("Delete", menu)
-        menu.addAction(edit_action)
+        menu.addAction(edit_both_action)
         menu.addAction(delete_action)
         action = menu.exec(event.screenPos())
-        if action == edit_action:
-            text, ok = QInputDialog.getText(None, "Edit Text", "Node text:", text=self.get_text())
-            if ok:
-                self.set_text(text)
+        if action == edit_both_action:
+            self.edit_subject_and_text()
         elif action == delete_action:
             scene = self.scene()
             to_remove = []
@@ -103,7 +146,8 @@ class FlowchartNode(QGraphicsRectItem):
         super().hoverLeaveEvent(event)
     # Reference to parent canvas for autosave
     canvas_ref = None
-    def __init__(self, text, node_id, pos=QPointF(0,0), color=QColor("#ffc0cb")):
+    def __init__(self, text, node_id, pos=QPointF(0,0), color=QColor("#ffc0cb"), subject=None):
+        self.node_id = node_id
         log_debug(f"Creating node: id={node_id}, text='{text}', pos=({pos.x()}, {pos.y()})")
         # Dynamic sizing: initial size
         self.default_width = 120
@@ -122,7 +166,10 @@ class FlowchartNode(QGraphicsRectItem):
         self.text_item.setTextInteractionFlags(Qt.NoTextInteraction)
         self.text_item.setDefaultTextColor(Qt.black)
         self.text_item.setFont(QFont("Arial", 12))
-        self.node_id = node_id
+
+        # log_debug for subject/text/pos already above
+        self.text = text
+        self.subject = subject if subject is not None else ''
         self.setPos(pos)
 
         # Connector buttons (hidden by default)
@@ -146,30 +193,8 @@ class FlowchartNode(QGraphicsRectItem):
             # installSceneEventFilter will be called after node is added to scene
             log_debug(f"Connector button '{name}' for node {node_id} set to accept left button only and selectable/focusable.")
             self.connector_buttons[name] = btn
-
         self.set_text(text)
-
-        # Connector buttons (hidden by default)
-        self.connector_buttons = {}
-        for name, (dx, dy) in {
-            'top': (0, -30),
-            'bottom': (0, 30),
-            'left': (-self.default_width//2, 0),
-            'right': (self.default_width//2, 0)
-        }.items():
-            btn = QGraphicsEllipseItem(-8, -8, 16, 16, self)
-            btn.setPos(dx, dy)
-            btn.setBrush(QBrush(QColor("#00ccff")))
-            btn.setPen(QPen(Qt.black, 1))
-            btn.setZValue(2)
-            btn.setVisible(False)
-            btn.setData(0, name)
-            btn.setAcceptedMouseButtons(Qt.LeftButton)
-            btn.setFlag(QGraphicsItem.ItemIsSelectable, True)
-            btn.setFlag(QGraphicsItem.ItemIsFocusable, True)
-            # installSceneEventFilter will be called after node is added to scene
-            log_debug(f"Connector button '{name}' for node {node_id} set to accept left button only and selectable/focusable.")
-            self.connector_buttons[name] = btn
+        self.subject = subject if subject is not None else ''
 
     def update_text_box_size(self):
         # Calculate required width/height for text
@@ -231,13 +256,8 @@ class FlowchartNode(QGraphicsRectItem):
         super().mousePressEvent(event)
 
     def mouseDoubleClickEvent(self, event):
-        # Double-click: edit text
         if event.button() == Qt.LeftButton:
-            text, ok = QInputDialog.getText(None, "Edit Text", "Node text:", text=self.get_text())
-            if ok:
-                self.set_text(text)
-                if self.canvas_ref and hasattr(self.canvas_ref, 'on_update'):
-                    self.canvas_ref.on_update()
+            self.edit_subject_and_text()
             event.accept()
             return
         super().mouseDoubleClickEvent(event)
@@ -246,7 +266,7 @@ class FlowchartNode(QGraphicsRectItem):
         return self.text_item.toPlainText()
 
     def set_text(self, text):
-        self.text_item.setPlainText(text)
+        self.update_text_item()
         self.update_text_box_size()
         # Only autosave if this is a text modification (not node creation)
         if self.canvas_ref and hasattr(self.canvas_ref, 'on_update') and text.strip():
@@ -345,6 +365,7 @@ class FlowchartCanvas(QGraphicsView):
             pos = node.get_position()
             nodes.append({
                 'id': node_id,
+                'subject': node.get_subject() if hasattr(node, 'get_subject') else '',
                 'text': node.get_text(),
                 'connectsTo': connectsTo if connectsTo else None,
                 'connectsFrom': connectsFrom if connectsFrom else None,
@@ -362,9 +383,11 @@ class FlowchartCanvas(QGraphicsView):
         # Add nodes
         for n in nodes:
             pos = QPointF(*(n.get('pos', [0, 0])))
-            log_debug(f"Import node: id={n['id']}, text='{n['text']}', pos={n.get('pos', [0, 0])}")
+            subject = n.get('subject', '')
+            text = n.get('text', '')
+            # Backward compatibility: if subject is missing or empty, use text as subject for display
             color = QColor("#ffc0cb")
-            node = FlowchartNode(n['text'], n['id'], pos, color)
+            node = FlowchartNode(text, n['id'], pos, color, subject=subject)
             node.setAcceptHoverEvents(True)
             node.canvas_ref = self
             self.scene().addItem(node)
