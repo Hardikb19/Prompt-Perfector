@@ -9,7 +9,6 @@ from ..logic import db
 from promptperfector.logic.logger import log_info, log_debug
 
 import functools
-from ..logic import db
 from PySide6.QtWidgets import QSplitter, QPlainTextEdit, QToolButton, QSizePolicy, QStyle
 from PySide6.QtCore import Qt, QTimer
 
