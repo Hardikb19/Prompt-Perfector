@@ -1,3 +1,4 @@
+from PySide6.QtCore import QThread, Signal, QObject
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLabel, QTextEdit, QHBoxLayout, QMenuBar, QMenu, QComboBox
 from PySide6.QtGui import QAction
@@ -13,6 +14,22 @@ from PySide6.QtWidgets import QSplitter, QPlainTextEdit, QToolButton, QSizePolic
 from PySide6.QtCore import Qt, QTimer
 
 class FlowchartWidget(QWidget):
+    class LLMWorker(QObject):
+        finished = Signal(str, Exception)
+        def __init__(self, llm_runner, prompt):
+            super().__init__()
+            self.llm_runner = llm_runner
+            self.prompt = prompt
+        def run(self):
+            from promptperfector.logic.logger import log_debug
+            try:
+                log_debug(f"LLMWorker: Running prompt on model: {getattr(self.llm_runner, 'model_path', None)}")
+                log_debug(f"LLMWorker: Prompt: {self.prompt!r}")
+                output = self.llm_runner.prompt(self.prompt)
+                self.finished.emit(output, None)
+            except Exception as e:
+                log_debug(f"LLMWorker: Exception: {e}")
+                self.finished.emit('', e)
     goto_final_prompt = Signal()
     switch_project = Signal()
     new_project = Signal()
@@ -22,6 +39,10 @@ class FlowchartWidget(QWidget):
         super().__init__(parent)
         self.model = model
         self.project_id = project_id
+
+        # LLM runner state
+        self.llm_runner = None
+        self.current_model_path = None
 
         # Main horizontal splitter
         self.splitter = QSplitter(Qt.Horizontal, self)
@@ -47,15 +68,22 @@ class FlowchartWidget(QWidget):
         switch_action.triggered.connect(self.switch_project.emit)
         new_action.triggered.connect(self.new_project.emit)
 
-        # Version dropdown (top right)
+        # Version and Model dropdowns (top right)
         version_layout = QHBoxLayout()
         version_layout.addStretch()
+        self.model_dropdown = QComboBox()
+        self.model_dropdown.setMinimumWidth(160)
+        self.model_dropdown.setToolTip("Select LLM model (from models/ folder)")
+        self.model_dropdown.currentIndexChanged.connect(self.on_model_changed)
+        version_layout.addWidget(QLabel("Model:"))
+        version_layout.addWidget(self.model_dropdown)
         self.version_dropdown = QComboBox()
         self.version_dropdown.setMinimumWidth(120)
         self.version_dropdown.currentIndexChanged.connect(self.on_version_changed)
         version_layout.addWidget(QLabel("Version:"))
         version_layout.addWidget(self.version_dropdown)
         self.left_layout.addLayout(version_layout)
+        self.refresh_models()
         self.refresh_versions()
 
         # Canvas area (infinite, for flowchart)
@@ -78,10 +106,11 @@ class FlowchartWidget(QWidget):
         canvas_layout.addWidget(self.canvas, stretch=5)
         self.left_layout.addWidget(canvas_container)
 
+        
+        self.generate_btn = QPushButton("Generate")
+        self.generate_btn.clicked.connect(self.on_generate_clicked)
         # Generate Button (top right)
         btn_layout = QHBoxLayout()
-        self.generate_btn = QPushButton("Generate")
-        self.generate_btn.clicked.connect(self.goto_final_prompt.emit)
         btn_layout.addStretch()
         btn_layout.addWidget(self.generate_btn)
         self.left_layout.addLayout(btn_layout)
@@ -137,6 +166,85 @@ class FlowchartWidget(QWidget):
         # Connect autosave hooks
         self.canvas.on_update = self._on_flowchart_update
         self._on_flowchart_update()
+
+    def refresh_models(self):
+        """Scan models/ for subfolders with .gguf files and populate the model dropdown."""
+        import os
+        from promptperfector.logic.llm.model_utils import list_available_models
+        exe_dir = os.path.dirname(os.path.abspath(__file__))
+        root_dir = os.path.abspath(os.path.join(exe_dir, '../..'))
+        models_dir = os.path.join(root_dir, 'models')
+        models = list_available_models(models_dir)
+        self.model_dropdown.blockSignals(True)
+        self.model_dropdown.clear()
+        for name, path in models:
+            self.model_dropdown.addItem(name, path)
+        self.model_dropdown.blockSignals(False)
+        if models:
+            self.model_dropdown.setCurrentIndex(0)
+        else:
+            self.model_dropdown.addItem("No models found", None)
+
+
+    def on_model_changed(self, idx):
+        model_path = self.model_dropdown.itemData(idx)
+        if not model_path or model_path == self.current_model_path:
+            return
+        # Stop previous runner if any
+        if self.llm_runner:
+            try:
+                self.llm_runner.stop()
+            except Exception as e:
+                log_info(f"Error stopping previous LLM runner: {e}")
+        # Start new runner
+        try:
+            from promptperfector.logic.llm.llm_runner import LlamaCppRunner
+            self.llm_runner = LlamaCppRunner(model_path)
+            self.llm_runner.start()
+            self.current_model_path = model_path
+            log_info(f"Started LLM runner for model: {model_path}")
+        except Exception as e:
+            self.llm_runner = None
+            self.current_model_path = None
+            log_info(f"Failed to start LLM runner: {e}")
+
+    def on_generate_clicked(self):
+        # Run a test prompt with the selected model and show output (async)
+        idx = self.model_dropdown.currentIndex()
+        model_path = self.model_dropdown.itemData(idx)
+        log_debug(f"on_generate_clicked: model_path={model_path}")
+        if not model_path or model_path == "No models found":
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "No Model", "Please select a valid model from the dropdown.")
+            return
+        if not self.llm_runner or self.current_model_path != model_path:
+            self.on_model_changed(idx)
+        if not self.llm_runner:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "LLM Error", "Failed to load the selected model.")
+            return
+        prompt = "Say hello from " + self.model_dropdown.currentText() + " in spanish!"
+        log_debug(f"on_generate_clicked: Sending prompt to LLM: {prompt!r}")
+
+        # Start worker thread
+        self.llm_thread = QThread()
+        self.llm_worker = self.LLMWorker(self.llm_runner, prompt)
+        self.llm_worker.moveToThread(self.llm_thread)
+        self.llm_thread.started.connect(self.llm_worker.run)
+        self.llm_worker.finished.connect(self.on_llm_finished)
+        self.llm_worker.finished.connect(self.llm_thread.quit)
+        self.llm_worker.finished.connect(self.llm_worker.deleteLater)
+        self.llm_thread.finished.connect(self.llm_thread.deleteLater)
+        self.generate_btn.setEnabled(False)
+        self.llm_thread.start()
+
+    def on_llm_finished(self, output, error):
+        self.generate_btn.setEnabled(True)
+        from PySide6.QtWidgets import QMessageBox
+        if error:
+            QMessageBox.critical(self, "LLM Error", f"Error running model: {error}")
+        else:
+            QMessageBox.information(self, "LLM Output", output.strip())
 
     def toggle_json_box(self):
         show = self.toggle_json_btn.isChecked()

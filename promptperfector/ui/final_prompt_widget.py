@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton
-from ..logic.llm import LLM
+from ..logic.llm import llm
 from ..logic import db
 
 class FinalPromptWidget(QWidget):
@@ -11,7 +11,7 @@ class FinalPromptWidget(QWidget):
         self.layout.addWidget(self.label)
         self.prompt_label = QLabel("")
         self.layout.addWidget(self.prompt_label)
-        self.llm = LLM()
+        self.llm = llm()
         self.back_callback = back_callback
         self.back_btn = QPushButton("Back to Flowchart")
         self.back_btn.clicked.connect(self.handle_back)

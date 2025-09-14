@@ -37,7 +37,7 @@ class MainWindow(QMainWindow):
         else:
             model = flowchart.FlowchartModel()
         self.flowchart_screen = FlowchartWidget(model, project_id, self)
-        self.final_prompt_screen = FinalPromptWidget(back_callback=self.back_to_flowchart)
+        # self.final_prompt_screen = FinalPromptWidget(back_callback=self.back_to_flowchart)
         if self.stacked.count() > 1:
             self.stacked.removeWidget(self.stacked.widget(1))
         self.stacked.addWidget(self.flowchart_screen)
