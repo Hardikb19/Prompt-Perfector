@@ -198,6 +198,8 @@ class FlowchartWidget(QWidget):
                 import json
                 log_info(f"Loading version {v} for project {self.project_id}")
                 self.canvas.import_from_model(json.loads(row[0]))
+        # Always update JSON output after version change
+        self._on_flowchart_update()
 
     def get_flow_json(self):
         # Export from canvas to model/JSON

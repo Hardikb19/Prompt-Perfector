@@ -466,6 +466,11 @@ class FlowchartCanvas(QGraphicsView):
                 log_info(f"Deleted connector via context menu: {getattr(item, 'from_id', None)} -> {getattr(item, 'to_id', None)}")
                 self.scene().removeItem(item)
                 self.connectors = [c for c in self.connectors if c[2] is not item]
+                log_debug(f"After deletion, {len(self.connectors)} connectors remain.")
+                log_debug(f"calling debug on self: {self}")
+                if hasattr(self, 'on_update'):
+                    log_debug("Calling on_update after connector deletion.")
+                    self.on_update()
             return
         # If right-clicked on a node, let the node handle its own context menu event
         if isinstance(item, FlowchartNode):
