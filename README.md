@@ -111,3 +111,24 @@ Prompt Perfector is a cross-platform Python application for designing, refining,
 
 - Windows
 - MacOS
+
+## UI Mocks
+
+<table>
+    <tr>
+        <td>
+            <img src="ui_mocks/v1/JSONRenderer.png"/>
+        </td>
+        <td>
+            <img src="ui_mocks/v1/LandingScreen.png">
+        </td>
+    </tr>
+    <tr>
+        <td>
+            <img src="ui_mocks/v1/VersionControlDropdown.png"/>
+        </td>
+        <td>
+            <img src="ui_mocks/v1/FlowchartScreen.png">
+        </td>
+    </tr>
+</table>

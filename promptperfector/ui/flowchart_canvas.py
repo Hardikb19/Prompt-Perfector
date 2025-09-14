@@ -105,7 +105,11 @@ class FlowchartNode(QGraphicsRectItem):
     canvas_ref = None
     def __init__(self, text, node_id, pos=QPointF(0,0), color=QColor("#ffc0cb")):
         log_debug(f"Creating node: id={node_id}, text='{text}', pos=({pos.x()}, {pos.y()})")
-        super().__init__(-60, -30, 120, 60)
+        # Dynamic sizing: initial size
+        self.default_width = 120
+        self.max_width = 240
+        self.margin = 10
+        super().__init__(-self.default_width//2, -30, self.default_width, 60)
         self.setBrush(QBrush(color))
         self.setFlag(QGraphicsItem.ItemIsMovable, True)
         self.setFlag(QGraphicsItem.ItemIsSelectable, True)
@@ -114,11 +118,10 @@ class FlowchartNode(QGraphicsRectItem):
         self.setAcceptHoverEvents(True)
         self.setAcceptedMouseButtons(Qt.AllButtons)
         log_debug(f"FlowchartNode created: id={node_id}, focusable={self.flags() & QGraphicsItem.ItemIsFocusable != 0}")
-        self.text_item = QGraphicsTextItem(self.clip_text(text), self)
+        self.text_item = QGraphicsTextItem(self)
         self.text_item.setTextInteractionFlags(Qt.NoTextInteraction)
         self.text_item.setDefaultTextColor(Qt.black)
         self.text_item.setFont(QFont("Arial", 12))
-        self.text_item.setPos(-50, -15)
         self.node_id = node_id
         self.setPos(pos)
 
@@ -127,8 +130,8 @@ class FlowchartNode(QGraphicsRectItem):
         for name, (dx, dy) in {
             'top': (0, -30),
             'bottom': (0, 30),
-            'left': (-60, 0),
-            'right': (60, 0)
+            'left': (-self.default_width//2, 0),
+            'right': (self.default_width//2, 0)
         }.items():
             btn = QGraphicsEllipseItem(-8, -8, 16, 16, self)
             btn.setPos(dx, dy)
@@ -143,6 +146,55 @@ class FlowchartNode(QGraphicsRectItem):
             # installSceneEventFilter will be called after node is added to scene
             log_debug(f"Connector button '{name}' for node {node_id} set to accept left button only and selectable/focusable.")
             self.connector_buttons[name] = btn
+
+        self.set_text(text)
+
+        # Connector buttons (hidden by default)
+        self.connector_buttons = {}
+        for name, (dx, dy) in {
+            'top': (0, -30),
+            'bottom': (0, 30),
+            'left': (-self.default_width//2, 0),
+            'right': (self.default_width//2, 0)
+        }.items():
+            btn = QGraphicsEllipseItem(-8, -8, 16, 16, self)
+            btn.setPos(dx, dy)
+            btn.setBrush(QBrush(QColor("#00ccff")))
+            btn.setPen(QPen(Qt.black, 1))
+            btn.setZValue(2)
+            btn.setVisible(False)
+            btn.setData(0, name)
+            btn.setAcceptedMouseButtons(Qt.LeftButton)
+            btn.setFlag(QGraphicsItem.ItemIsSelectable, True)
+            btn.setFlag(QGraphicsItem.ItemIsFocusable, True)
+            # installSceneEventFilter will be called after node is added to scene
+            log_debug(f"Connector button '{name}' for node {node_id} set to accept left button only and selectable/focusable.")
+            self.connector_buttons[name] = btn
+
+    def update_text_box_size(self):
+        # Calculate required width/height for text
+        doc = self.text_item.document()
+        doc.setDefaultFont(self.text_item.font())
+        # Try to fit in default width, then max width
+        doc.setTextWidth(self.default_width - 2*self.margin)
+        if doc.idealWidth() < self.max_width - 2*self.margin:
+            width = max(self.default_width, int(doc.idealWidth()) + 2*self.margin)
+            text_width = width - 2*self.margin
+        else:
+            width = self.max_width
+            text_width = width - 2*self.margin
+        self.text_item.setTextWidth(text_width)
+        height = int(doc.size().height()) + 2*self.margin
+        # Update rect
+        self.setRect(-width//2, -height//2, width, height)
+        # Center text
+        self.text_item.setPos(-text_width//2, -doc.size().height()/2)
+        # Move connector buttons
+        self.connector_buttons['left'].setPos(-width//2, 0)
+        self.connector_buttons['right'].setPos(width//2, 0)
+        self.connector_buttons['top'].setPos(0, -height//2)
+        self.connector_buttons['bottom'].setPos(0, height//2)
+
 
     def install_connector_event_filters(self):
         for btn in self.connector_buttons.values():
@@ -194,14 +246,15 @@ class FlowchartNode(QGraphicsRectItem):
         return self.text_item.toPlainText()
 
     def set_text(self, text):
-        self.text_item.setPlainText(self.clip_text(text))
+        self.text_item.setPlainText(text)
+        self.update_text_box_size()
         # Only autosave if this is a text modification (not node creation)
         if self.canvas_ref and hasattr(self.canvas_ref, 'on_update') and text.strip():
             log_info(f"Node text updated: id={self.node_id}, new_text='{text}'")
             self.canvas_ref.on_update()
 
     def boundingRect(self):
-        return QRectF(-60, -30, 120, 60)
+        return self.rect()
 
     def get_position(self):
         return self.scenePos()
@@ -332,6 +385,10 @@ class FlowchartCanvas(QGraphicsView):
                     self.scene().addItem(connector)
                     self.connectors.append((from_node.node_id, to_node.node_id, connector))
                     log_info(f"Imported connector: {from_node.node_id} -> {to_node.node_id}")
+        # Fit view to all items if any exist
+        items_rect = self.scene().itemsBoundingRect()
+        if not items_rect.isNull():
+            self.fitInView(items_rect, Qt.KeepAspectRatio)
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setScene(QGraphicsScene(self))
