@@ -47,6 +47,20 @@ Prompt Perfector is a cross-platform Python application for designing, refining,
 
 ---
 
+
+## Requirements
+
+- Python 3.9+
+- PySide6
+- uuid
+- (sqlite3 is included in Python stdlib)
+
+Install dependencies:
+
+```
+pip install -r requirements.txt
+```
+
 ## Architecture
 
 - **UI:** PySide6 (QGraphicsView, QGraphicsScene, QGraphicsRectItem, QGraphicsLineItem, QComboBox, QMenuBar)
@@ -111,3 +125,24 @@ Prompt Perfector is a cross-platform Python application for designing, refining,
 
 - Windows
 - MacOS
+
+## UI Mocks
+
+<table>
+    <tr>
+        <td>
+            <img src="ui_mocks/v1/JSONRenderer.png"/>
+        </td>
+        <td>
+            <img src="ui_mocks/v1/LandingScreen.png">
+        </td>
+    </tr>
+    <tr>
+        <td>
+            <img src="ui_mocks/v1/VersionControlDropdown.png"/>
+        </td>
+        <td>
+            <img src="ui_mocks/v1/FlowchartScreen.png">
+        </td>
+    </tr>
+</table>
